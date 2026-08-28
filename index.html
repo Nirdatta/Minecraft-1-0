@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>Minecraft Clone JS - PC & Mobile Edition (Bug Fix)</title>
+    <title>Minecraft Clone JS - Physics & Touch Fixed</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
         body, html { width: 100vw; height: 100vh; overflow: hidden; background-color: #78A7FF; font-family: 'Courier New', Courier, monospace; user-select: none; -webkit-user-select: none; }
@@ -150,7 +150,7 @@
         const controls = new THREE.PointerLockControls(camera, document.body);
         scene.add(controls.getObject());
 
-        // 2. CORPO DI STEVE
+        // 2. CORPO DI STEVE (Mantiene l'ombra e la base)
         const playerBody = new THREE.Group();
         const torsoMat = new THREE.MeshLambertMaterial({ color: 0x00AAAA });
         const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.3), torsoMat);
@@ -346,7 +346,7 @@
             });
         }
 
-        // 5. MOVIMENTO E INPUT (PC + MOBILE)
+        // 5. GESTIONE INPUT (PC + MOBILE) E PIAZZAMENTO BLOCCHI
         let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
         let moveUp = false, moveDown = false;
         let canJump = false, isFlying = false;
@@ -403,7 +403,7 @@
             lastSpaceTime = now;
         }
 
-        // INTERAZIONE BLOCCHI (PC)
+        // INTERAZIONE BLOCCHI: EVITA DI PIAZZARE IL VETRO (O ALTRO) DENTRO SE STESSI
         document.addEventListener('mousedown', (e) => {
             if (isMobileMode || e.target.closest('.slot')) return;
             if (!controls.isLocked) { controls.lock(); return; }
@@ -435,8 +435,13 @@
                 const pos = intersect.point.clone().add(intersect.face.normal.clone().multiplyScalar(0.5));
                 const newPos = new THREE.Vector3(Math.round(pos.x), Math.round(pos.y), Math.round(pos.z));
                 
+                // FIX PIAZZAMENTO GHOST: Impedisce di piazzare il blocco se la tua hitbox AABB ci è dentro!
                 const pPos = controls.getObject().position;
-                if (Math.abs(newPos.x - pPos.x) < 0.8 && Math.abs(newPos.z - pPos.z) < 0.8 && newPos.y >= pPos.y - 1.5 && newPos.y <= pPos.y + 0.5) return; 
+                const overlapX = (pPos.x - 0.3 < newPos.x + 0.5) && (pPos.x + 0.3 > newPos.x - 0.5);
+                const overlapY = (pPos.y - 1.6 < newPos.y + 0.5) && (pPos.y + 0.2 > newPos.y - 0.5);
+                const overlapZ = (pPos.z - 0.3 < newPos.z + 0.5) && (pPos.z + 0.3 > newPos.z - 0.5);
+                
+                if (overlapX && overlapY && overlapZ) return; 
 
                 const newMesh = new THREE.Mesh(geometry, getMaterial(currentBlockType));
                 newMesh.position.copy(newPos);
@@ -446,27 +451,26 @@
             }
         }
 
-        // --- CONTROLLI TOUCH MOBILE ---
+        // --- CONTROLLI TOUCH MOBILE OTTIMIZZATI ---
         const joyBase = document.getElementById('joystick-base');
         const joyStick = document.getElementById('joystick-stick');
         const jumpBtn = document.getElementById('mobile-jump-btn');
 
         let touchLookId = null;
         let touchLookStart = { x: 0, y: 0 };
+        let touchInitialPos = { x: 0, y: 0 }; // Fix per calcolare la distanza totale
         let touchBreakTimer = null;
         let isTouchingScreen = false;
 
         // Joystick Logic
         joyBase.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            const touch = e.touches[0];
-            updateJoystick(touch);
+            updateJoystick(e.touches[0]);
         }, { passive: false });
 
         joyBase.addEventListener('touchmove', (e) => {
             e.preventDefault();
-            const touch = e.touches[0];
-            updateJoystick(touch);
+            updateJoystick(e.touches[0]);
         }, { passive: false });
 
         const resetJoystick = (e) => {
@@ -497,13 +501,12 @@
             joystickInput.y = -dy / maxRadius;
         }
 
-        // Salto Mobile
         jumpBtn.addEventListener('touchstart', (e) => {
             e.preventDefault();
             triggerJump();
         });
 
-        // Touch schermo per rotazione e distruzione/piazzamento blocchi (FIXED BUG 1)
+        // Touch schermo (FIXED BUG 1: Deadzone migliorata e Annullamento sicuro del timer)
         window.addEventListener('touchstart', (e) => {
             if (!isMobileMode) return;
             for (let i = 0; i < e.changedTouches.length; i++) {
@@ -513,16 +516,17 @@
                 if (touchLookId === null) {
                     touchLookId = touch.identifier;
                     touchLookStart = { x: touch.clientX, y: touch.clientY };
+                    touchInitialPos = { x: touch.clientX, y: touch.clientY }; // Salva la posizione Iniziale Assoluta
                     isTouchingScreen = true;
 
-                    // Timer 2 secondi per rompere blocco
+                    // Timer ridotto a 600ms per un feeling più rapido, simile a MCPE
                     touchBreakTimer = setTimeout(() => {
                         if (isTouchingScreen) {
                             handleBlockBreak();
                             if (navigator.vibrate) navigator.vibrate(100);
-                            touchBreakTimer = null; // FIX BUG 1: Annulla il timer così touchend NON piazzerà il blocco subito dopo
+                            touchBreakTimer = null; // Il timer si distrugge dopo aver spaccato, quindi touchEnd NON piazzerà il blocco
                         }
-                    }, 2000);
+                    }, 600);
                 }
             }
         }, { passive: false });
@@ -532,15 +536,21 @@
             for (let i = 0; i < e.changedTouches.length; i++) {
                 const touch = e.changedTouches[i];
                 if (touch.identifier === touchLookId) {
-                    const dx = touch.clientX - touchLookStart.x;
-                    const dy = touch.clientY - touchLookStart.y;
+                    
+                    // Controlla lo spostamento TOTALE dall'inizio del tocco
+                    const totalDx = touch.clientX - touchInitialPos.x;
+                    const totalDy = touch.clientY - touchInitialPos.y;
 
-                    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                    // Se il dito si è mosso fuori dalla deadzone (15px) capiamo che sta solo girando la telecamera, non scavando
+                    if (Math.abs(totalDx) > 15 || Math.abs(totalDy) > 15) {
                         if (touchBreakTimer) {
                             clearTimeout(touchBreakTimer);
                             touchBreakTimer = null;
                         }
                     }
+
+                    const dx = touch.clientX - touchLookStart.x;
+                    const dy = touch.clientY - touchLookStart.y;
 
                     const euler = new THREE.Euler(0, 0, 0, 'YXZ');
                     euler.setFromQuaternion(camera.quaternion);
@@ -549,7 +559,7 @@
                     euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, euler.x));
                     camera.quaternion.setFromEuler(euler);
 
-                    touchLookStart = { x: touch.clientX, y: touch.clientY };
+                    touchLookStart = { x: touch.clientX, y: touch.clientY }; // Resetta per il frame successivo
                 }
             }
         }, { passive: false });
@@ -559,7 +569,7 @@
             for (let i = 0; i < e.changedTouches.length; i++) {
                 const touch = e.changedTouches[i];
                 if (touch.identifier === touchLookId) {
-                    // FIX BUG 1: Se touchBreakTimer è ancora attivo (pressione breve), piazzi il blocco
+                    // Se il timer era ancora attivo al rilascio (pressione breve) annullalo e piazza il blocco!
                     if (touchBreakTimer) {
                         clearTimeout(touchBreakTimer);
                         touchBreakTimer = null;
@@ -574,27 +584,9 @@
         window.addEventListener('touchcancel', endTouchLook);
 
 
-        // 6. COLLISIONI PARETI
-        function checkHorizontalCollision(pos) {
-            const pad = 0.25;
-            const checkCoords = [
-                [pos.x - pad, pos.z - pad], [pos.x + pad, pos.z - pad],
-                [pos.x - pad, pos.z + pad], [pos.x + pad, pos.z + pad]
-            ];
-            const headY = Math.round(pos.y - 0.4);
-            const bodyY = Math.round(pos.y - 1.1);
-            
-            for (let c of checkCoords) {
-                const bx = Math.round(c[0]); const bz = Math.round(c[1]);
-                if (blocks.has(getBlockKey(bx, bodyY, bz)) || blocks.has(getBlockKey(bx, headY, bz))) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        // 7. LOOP DI ANIMAZIONE E FISICA (FIXED BUG 2)
+        // 6. NUOVO MOTORE FISICO "AABB" PER COLLISIONI PERFETTE (FIX BUG 2 - Sabbie Mobili)
         let prevTime = performance.now();
+        
         function animate() {
             requestAnimationFrame(animate);
             const time = performance.now();
@@ -629,105 +621,32 @@
                     if (moveRight) moveDir.add(sideDir);
                     if (moveLeft) moveDir.sub(sideDir);
                 }
+                if (moveDir.lengthSq() > 0) moveDir.normalize();
 
-                if (moveDir.lengthSq() > 0) {
-                    moveDir.normalize();
-                    const oldX = playerPos.x;
-                    const oldZ = playerPos.z;
+                let dx = moveDir.x * walkSpeed * delta;
+                let dz = moveDir.z * walkSpeed * delta;
+                let dy = 0;
 
-                    playerPos.x += moveDir.x * walkSpeed * delta;
-                    playerPos.z += moveDir.z * walkSpeed * delta;
-
-                    if (checkHorizontalCollision(playerPos)) {
-                        playerPos.x = oldX;
-                        playerPos.z = oldZ;
-                    }
-                }
-
-                // Gestione Volo / Gravità e Risoluzione Collisione Terreno (FIX BUG 2)
                 if (isFlying) {
-                    let flySpeedY = 0;
-                    if (moveUp) flySpeedY = 8;
-                    if (moveDown) flySpeedY = -8;
-                    playerPos.y += flySpeedY * delta;
+                    if (moveUp) dy = 8 * delta;
+                    if (moveDown) dy = -8 * delta;
+                    velocityY = 0;
                 } else {
-                    // Limite max velocità di caduta per evitare penetrazioni profonde
-                    velocityY = Math.max(-30.0, velocityY - 26.0 * delta); 
-                    playerPos.y += velocityY * delta;
-
-                    // Controllo multi-altezza sotto i piedi per prevenire sprofondamenti
-                    const feetY = playerPos.y - 1.6;
-                    const samplePoints = [
-                        [playerPos.x - 0.2, playerPos.z - 0.2], [playerPos.x + 0.2, playerPos.z - 0.2],
-                        [playerPos.x - 0.2, playerPos.z + 0.2], [playerPos.x + 0.2, playerPos.z + 0.2],
-                        [playerPos.x, playerPos.z]
-                    ];
-
-                    let grounded = false;
-                    for (let pt of samplePoints) {
-                        const bx = Math.round(pt[0]);
-                        const bz = Math.round(pt[1]);
-
-                        // Controlliamo l'altezza sotto i piedi e il blocco subito dentro i piedi
-                        for (let checkOffset = 0; checkOffset >= -1; checkOffset--) {
-                            const by = Math.floor(feetY) + checkOffset;
-
-                            if (blocks.has(getBlockKey(bx, by, bz))) {
-                                const blockTop = by + 0.5;
-                                if (feetY <= blockTop && velocityY <= 0) {
-                                    playerPos.y = blockTop + 1.6; // Riposiziona perfettamente il personaggio in superficie
-                                    velocityY = 0;
-                                    canJump = true;
-                                    grounded = true;
-                                    break;
-                                }
-                            }
-                        }
-                        if (grounded) break;
-                    }
-                    if (!grounded) canJump = false;
+                    velocityY -= 26.0 * delta; 
+                    velocityY = Math.max(-40.0, velocityY); // Limite velocità caduta per non penetrare il terreno a frame alti!
+                    dy = velocityY * delta;
                 }
 
-                if (playerPos.y < -10) { playerPos.set(0, 25, 0); velocityY = 0; }
-                queueChunks(); 
-            }
+                // Costanti della hitbox del Giocatore (AABB)
+                const pRadius = 0.3; // Larghezza
+                const pHeight = 1.6; // Distanza Occhi-Piedi
+                const pHead = 0.2;   // Distanza Occhi-Cima testa
 
-            renderer.render(scene, camera); 
-            prevTime = time;
-        }
-
-        // START ENGINE
-        function startApp(mode) {
-            document.getElementById('mode-selector').style.display = 'none';
-            document.getElementById('loading').style.display = 'flex';
-
-            if (mode === 'mobile') {
-                isMobileMode = true;
-                document.getElementById('instructions').style.display = 'none';
-                document.getElementById('mobile-controls').style.display = 'block';
-
-                if (document.documentElement.requestFullscreen) {
-                    document.documentElement.requestFullscreen().catch(()=>{});
-                }
-            }
-
-            setTimeout(() => {
-                controls.getObject().position.set(0, 25, 0); 
-                generateChunk(0, 0);
-
-                const loadingScreen = document.getElementById('loading');
-                loadingScreen.style.opacity = '0';
-                setTimeout(() => loadingScreen.style.display = 'none', 300);
-
-                animate();
-            }, 100);
-        }
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-    </script>
-</body>
-</html>
+                // Funzione per raccogliere TUTTI i blocchi intorno al giocatore
+                const getBlocksNear = (px, py, pz, offsetHeight) => {
+                    let res = [];
+                    let minX = Math.round(px - pRadius); let maxX = Math.round(px + pRadius);
+                    let minY = Math.round(py - pHeight + offsetHeight); let maxY = Math.round(py + pHead);
+                    let minZ = Math.round(pz - pRadius); let maxZ = Math.round(pz + pRadius);
+                    
+                    for(let x = min

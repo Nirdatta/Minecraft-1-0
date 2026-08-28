@@ -3,60 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minecraft Clone JS - Alpha Textures</title>
+    <title>Minecraft Clone JS - Physics & Steve Fixed</title>
     <style>
-        /* Reset totale per forzare lo schermo intero */
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body, html { width: 100vw; height: 100vh; overflow: hidden; background-color: #87CEEB; font-family: 'Courier New', Courier, monospace; user-select: none; }
+        body, html { width: 100vw; height: 100vh; overflow: hidden; background-color: #78A7FF; font-family: 'Courier New', Courier, monospace; user-select: none; }
         #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
         
-        /* Mirino perfetto al pixel */
+        /* Mirino centratissimo */
         #crosshair {
             position: absolute; top: 50%; left: 50%; width: 16px; height: 16px;
             transform: translate(-50%, -50%); pointer-events: none; z-index: 10;
         }
         #crosshair::before, #crosshair::after {
-            content: ''; position: absolute; background: rgba(255, 255, 255, 0.85); mix-blend-mode: difference;
+            content: ''; position: absolute; background: rgba(255, 255, 255, 0.9); mix-blend-mode: difference;
         }
         #crosshair::before { top: 7px; left: 0; width: 16px; height: 2px; }
         #crosshair::after { top: 0; left: 7px; width: 2px; height: 16px; }
 
-        /* Schermata Caricamento */
+        /* Loading Overlay */
         #loading {
             position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
-            background-color: #222; color: #fff; display: flex;
-            justify-content: center; align-items: center; font-size: 30px;
+            background-color: #111; color: #fff; display: flex;
+            justify-content: center; align-items: center; font-size: 28px;
             z-index: 100; transition: opacity 0.3s;
         }
 
-        /* Hotbar in stile Minecraft Classico */
+        /* Hotbar */
         #hotbar {
-            position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 2px; background: rgba(0, 0, 0, 0.6); padding: 4px;
-            border: 2px solid #111; border-radius: 2px; z-index: 20;
+            position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 4px; background: rgba(0, 0, 0, 0.65); padding: 5px;
+            border: 2px solid #222; border-radius: 4px; z-index: 20;
         }
         .slot {
-            width: 44px; height: 44px; background: #888; cursor: pointer;
-            border: 2px solid #555;
-            box-shadow: inset -2px -2px 0px rgba(0,0,0,0.5), inset 2px 2px 0px rgba(255,255,255,0.5);
+            width: 46px; height: 46px; background: #777; cursor: pointer;
+            border: 2px solid #444;
+            box-shadow: inset -2px -2px 0px rgba(0,0,0,0.5), inset 2px 2px 0px rgba(255,255,255,0.4);
             display: flex; justify-content: center; align-items: center; position: relative;
         }
-        .slot.active { border: 2px solid white; box-shadow: inset -2px -2px 0px rgba(0,0,0,0.3), inset 2px 2px 0px rgba(255,255,255,0.3); }
+        .slot.active { border: 2px solid #fff; box-shadow: inset -2px -2px 0px rgba(0,0,0,0.3), inset 2px 2px 0px rgba(255,255,255,0.6); }
         .slot canvas { width: 32px; height: 32px; image-rendering: pixelated; }
-        .slot-num { position: absolute; top: 2px; left: 4px; font-size: 10px; color: white; text-shadow: 1px 1px 0 #000; font-weight: bold; }
+        .slot-num { position: absolute; top: 2px; left: 4px; font-size: 11px; color: white; text-shadow: 1px 1px 0 #000; font-weight: bold; }
 
         #instructions {
-            position: absolute; top: 10px; left: 10px; color: white;
-            text-shadow: 1px 1px 0 #000; pointer-events: none; font-size: 14px; z-index: 20;
+            position: absolute; top: 12px; left: 12px; color: white;
+            text-shadow: 1px 1px 0 #000; pointer-events: none; font-size: 13px; z-index: 20;
         }
     </style>
 </head>
 <body>
 
-    <div id="loading">Generazione Mondo...</div>
+    <div id="loading">Caricamento Mondo...</div>
     <div id="crosshair"></div>
     <div id="instructions">
-        Click: Piazza/Rompi | WASD: Muovi | Spazio: Salta | Spazio x2: Volo | 1-6: Scegli Blocco | E: Sblocca Mouse
+        Click: Gioca/Piazza/Rompi | WASD: Muovi | Spazio: Salta | Spazio x2: Volo (Spazio=Sali, Shift=Scendi) | 1-6: Seleziona | E: Mouse
     </div>
     
     <div id="hotbar">
@@ -74,12 +73,15 @@
     <script src="https://unpkg.com/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
 
     <script>
-        // 1. INIZIALIZZAZIONE SCENA
+        // 1. SCENA E GRUPPO MONDO SEPARATO
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x78A7FF); 
         scene.fog = new THREE.Fog(0x78A7FF, 20, 50);
 
-        const camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 0.1, 100);
+        const worldGroup = new THREE.Group();
+        scene.add(worldGroup);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
         const renderer = new THREE.WebGLRenderer({ antialias: false });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.getElementById('canvas-container').appendChild(renderer.domElement);
@@ -93,7 +95,27 @@
         const controls = new THREE.PointerLockControls(camera, document.body);
         scene.add(controls.getObject());
 
-        // 2. GENERATORE DI TEXTURE PIXEL ART (Stile Alpha)
+        // 2. CORPO DI STEVE PER IL GIOCATORE
+        const playerBody = new THREE.Group();
+        
+        const torsoMat = new THREE.MeshLambertMaterial({ color: 0x00AAAA });
+        const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.3), torsoMat);
+        torso.position.set(0, -0.75, 0);
+
+        const legMat = new THREE.MeshLambertMaterial({ color: 0x0000AA });
+        const legs = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.3), legMat);
+        legs.position.set(0, -1.45, 0);
+
+        const skinMat = new THREE.MeshLambertMaterial({ color: 0xFFCC99 });
+        const lArm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.7, 0.2), skinMat);
+        lArm.position.set(-0.4, -0.75, 0);
+        const rArm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.7, 0.2), skinMat);
+        rArm.position.set(0.4, -0.75, 0);
+
+        playerBody.add(torso, legs, lArm, rArm);
+        controls.getObject().add(playerBody);
+
+        // 3. TEXTURE ALPHA IN PIXEL ART
         function createTexture(type, drawToUI = null) {
             const canvas = document.createElement('canvas');
             canvas.width = 16; canvas.height = 16;
@@ -116,10 +138,7 @@
             else if (type === 'grass_side') {
                 fill(134, 96, 67); noise(25);
                 ctx.fillStyle = '#76ac4f';
-                for(let i=0; i<16; i++) { ctx.fillRect(i, 0, 1, Math.random() * 4 + 3); }
-                const topNoise = ctx.getImageData(0,0,16,6);
-                for(let i=0; i<topNoise.data.length; i+=4) { topNoise.data[i]-=10; topNoise.data[i+1]-=10; topNoise.data[i+2]-=10; }
-                ctx.putImageData(topNoise,0,0);
+                for(let i=0; i<16; i++) ctx.fillRect(i, 0, 1, Math.random() * 4 + 3);
             } 
             else if (type === 'stone') { fill(125, 125, 125); noise(35); } 
             else if (type === 'bedrock') { fill(60, 60, 60); noise(80); } 
@@ -131,19 +150,14 @@
             else if (type === 'leaves') { fill(58, 133, 40); noise(40); } 
             else if (type === 'glass') {
                 ctx.clearRect(0,0,16,16);
-                ctx.fillStyle = 'rgba(230, 245, 255, 0.2)'; ctx.fillRect(0,0,16,16);
+                ctx.fillStyle = 'rgba(230, 245, 255, 0.25)'; ctx.fillRect(0,0,16,16);
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-                ctx.fillRect(0,0,16,2); ctx.fillRect(0,14,16,2); ctx.fillRect(0,0,2,16); ctx.fillRect(14,0,2,16);
-                ctx.fillRect(3,3,4,3);
+                ctx.fillRect(0,0,16,1); ctx.fillRect(0,15,16,1); ctx.fillRect(0,0,1,16); ctx.fillRect(15,0,1,16);
             } 
             else if (type === 'brick') {
                 fill(175, 75, 65); noise(20);
                 ctx.fillStyle = '#ccc';
                 for(let y=0; y<16; y+=4) ctx.fillRect(0, y, 16, 1);
-                for(let y=0; y<16; y+=8) {
-                    for(let x=4; x<16; x+=8) ctx.fillRect(x, y, 1, 4);
-                    for(let x=0; x<16; x+=8) ctx.fillRect(x, y+4, 1, 4);
-                }
             }
 
             if (drawToUI) {
@@ -154,13 +168,12 @@
             }
 
             const tex = new THREE.CanvasTexture(canvas);
-            tex.magFilter = THREE.NearestFilter; // Rende la texture in pixel art perfetta
+            tex.magFilter = THREE.NearestFilter;
             tex.minFilter = THREE.NearestFilter;
             return tex;
         }
 
-        // Materiali
-        const matDirt = new THREE.MeshLambertMaterial({ map: createTexture('dirt') });
+        const matDirt = new THREE.MeshLambertMaterial({ map: createTexture('dirt', 'ui-tex-6') });
         const matGrassSide = new THREE.MeshLambertMaterial({ map: createTexture('grass_side') });
         const matGrassTop = new THREE.MeshLambertMaterial({ map: createTexture('grass_top', 'ui-tex-1') });
         const matStone = new THREE.MeshLambertMaterial({ map: createTexture('stone', 'ui-tex-2') });
@@ -170,12 +183,9 @@
         const matGlass = new THREE.MeshLambertMaterial({ map: createTexture('glass', 'ui-tex-4'), transparent: true });
         const matBrick = new THREE.MeshLambertMaterial({ map: createTexture('brick', 'ui-tex-5') });
 
-        // Array di materiali per il blocco d'erba (facce diverse)
         const grassArray = [matGrassSide, matGrassSide, matGrassTop, matDirt, matGrassSide, matGrassSide];
-
         const geometry = new THREE.BoxGeometry(1, 1, 1);
         
-        // Indici: 1:Erba, 2:Pietra, 3:Legno, 4:Vetro, 5:Mattoni, 6:Terra (Hotbar 1-6) | 7:Bedrock, 8:Foglie
         const getMaterial = (type) => {
             switch(type) {
                 case 1: return grassArray;
@@ -189,9 +199,6 @@
             }
         };
 
-        // Disegna la terra nello slot 6 della UI
-        createTexture('dirt', 'ui-tex-6');
-
         let currentBlockType = 1;
         window.selectBlock = (type, el) => {
             currentBlockType = type;
@@ -200,7 +207,7 @@
             else document.querySelectorAll('.slot')[type-1].classList.add('active');
         }
 
-        // 3. GENERAZIONE MONDO
+        // 4. GENERAZIONE TERRENO OTTIMIZZATA
         const chunkSize = 16;
         const renderDistance = 2; 
         const chunks = new Map(); 
@@ -226,19 +233,18 @@
                     const worldZ = startZ + z;
                     const elevation = Math.floor(noise(worldX, worldZ)) + 12; 
 
-                    addBlockToChunk(worldX, 0, worldZ, 7, chunkGroup); // Bedrock
+                    addBlockToChunk(worldX, 0, worldZ, 7, chunkGroup);
                     
                     for(let y = Math.max(1, elevation - 4); y <= elevation; y++) {
                         if (y === elevation) {
-                            addBlockToChunk(worldX, y, worldZ, 1, chunkGroup); // Erba in cima
+                            addBlockToChunk(worldX, y, worldZ, 1, chunkGroup);
                         } else if (y >= elevation - 2) {
-                            addBlockToChunk(worldX, y, worldZ, 6, chunkGroup); // Terra sotto l'erba
+                            addBlockToChunk(worldX, y, worldZ, 6, chunkGroup);
                         } else {
-                            addBlockToChunk(worldX, y, worldZ, 2, chunkGroup); // Pietra
+                            addBlockToChunk(worldX, y, worldZ, 2, chunkGroup);
                         }
                     }
 
-                    // Alberi
                     if (Math.random() < 0.01 && elevation > 11) {
                         const treeHeight = Math.floor(Math.random() * 3) + 4;
                         for (let ty = 1; ty <= treeHeight; ty++) addBlockToChunk(worldX, elevation + ty, worldZ, 3, chunkGroup);
@@ -251,7 +257,7 @@
                     }
                 }
             }
-            scene.add(chunkGroup);
+            worldGroup.add(chunkGroup);
             chunks.set(chunkKey, chunkGroup);
         }
 
@@ -281,16 +287,17 @@
             chunks.forEach((group, key) => {
                 const [cx, cz] = key.split(',').map(Number);
                 if (Math.abs(cx - px) > renderDistance + 1 || Math.abs(cz - pz) > renderDistance + 1) {
-                    scene.remove(group); chunks.delete(key);
+                    worldGroup.remove(group); chunks.delete(key);
                     group.children.forEach(mesh => blocks.delete(getBlockKey(mesh.position.x, mesh.position.y, mesh.position.z)));
                 }
             });
         }
 
-        // 4. CONTROLLI E MECCANICHE
+        // 5. MOVIMENTO E FISICA CORRETTI
         let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        let moveUp = false, moveDown = false;
         let canJump = false, isFlying = false;
-        let velocity = new THREE.Vector3(); let direction = new THREE.Vector3();
+        let velocityY = 0;
         let lastSpaceTime = 0;
 
         document.addEventListener('keydown', (event) => {
@@ -301,11 +308,19 @@
                 case 'KeyD': moveRight = true; break;
                 case 'Space': 
                     const now = Date.now();
-                    if (now - lastSpaceTime < 300) { isFlying = !isFlying; velocity.y = 0; } 
-                    else if (canJump && !isFlying) { velocity.y = 10; } 
-                    else if (isFlying) { velocity.y = 10; }
+                    if (now - lastSpaceTime < 280) { 
+                        isFlying = !isFlying;
+                        velocityY = 0;
+                    } else {
+                        if (isFlying) {
+                            moveUp = true;
+                        } else if (canJump) {
+                            velocityY = 8.5; 
+                            canJump = false;
+                        }
+                    }
                     lastSpaceTime = now; break;
-                case 'ShiftLeft': if(isFlying) velocity.y = -10; break;
+                case 'ShiftLeft': if (isFlying) moveDown = true; break;
                 case 'KeyE': 
                     if(controls.isLocked) controls.unlock(); else controls.lock(); 
                     break;
@@ -322,17 +337,21 @@
             switch (event.code) {
                 case 'KeyW': moveForward = false; break; case 'KeyA': moveLeft = false; break;
                 case 'KeyS': moveBackward = false; break; case 'KeyD': moveRight = false; break;
-                case 'Space': if(isFlying) velocity.y = 0; break; case 'ShiftLeft': if(isFlying) velocity.y = 0; break;
+                case 'Space': moveUp = false; break;
+                case 'ShiftLeft': moveDown = false; break;
             }
         });
 
+        // PIAZZA ED ELIMINA BLOCCHI (Senza colpire Steve)
         document.addEventListener('mousedown', (e) => {
-            if (e.target.closest('.slot')) return; // Evita di piazzare blocchi se clicchi sull'inventario
+            if (e.target.closest('.slot')) return;
             if (!controls.isLocked) { controls.lock(); return; }
 
             const raycaster = new THREE.Raycaster();
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-            const intersects = raycaster.intersectObjects(scene.children, true);
+            
+            // Interseca solo con i blocchi del mondo
+            const intersects = raycaster.intersectObjects(worldGroup.children, true);
             
             if (intersects.length > 0 && intersects[0].distance < 6) {
                 const intersect = intersects[0];
@@ -353,25 +372,32 @@
                     const newMesh = new THREE.Mesh(geometry, getMaterial(currentBlockType));
                     newMesh.position.copy(newPos);
                     newMesh.matrixAutoUpdate = false; newMesh.updateMatrix();
-                    scene.add(newMesh); 
+                    worldGroup.add(newMesh); 
                     blocks.set(getBlockKey(newPos.x, newPos.y, newPos.z), newMesh);
                 }
             }
         });
 
-        // 5. FISICA E LOOP DI RENDERING
-        function checkCollisions(pos) {
-            const pad = 0.3; 
-            const checkPoints = [
-                new THREE.Vector3(pos.x - pad, pos.y, pos.z - pad), new THREE.Vector3(pos.x + pad, pos.y, pos.z + pad),
-                new THREE.Vector3(pos.x - pad, pos.y, pos.z + pad), new THREE.Vector3(pos.x + pad, pos.y, pos.z - pad)
+        // CONTROLLO COLLISIONI PARETI
+        function checkHorizontalCollision(pos) {
+            const pad = 0.25;
+            const checkCoords = [
+                [pos.x - pad, pos.z - pad], [pos.x + pad, pos.z - pad],
+                [pos.x - pad, pos.z + pad], [pos.x + pad, pos.z + pad]
             ];
-            for (let pt of checkPoints) {
-                if (blocks.has(getBlockKey(pt.x, pt.y - 1.5, pt.z))) return true;
+            const headY = Math.round(pos.y - 0.4);
+            const bodyY = Math.round(pos.y - 1.1);
+            
+            for (let c of checkCoords) {
+                const bx = Math.round(c[0]); const bz = Math.round(c[1]);
+                if (blocks.has(getBlockKey(bx, bodyY, bz)) || blocks.has(getBlockKey(bx, headY, bz))) {
+                    return true;
+                }
             }
             return false;
         }
 
+        // 6. LOOP PRINCIPALE
         let prevTime = performance.now();
         function animate() {
             requestAnimationFrame(animate);
@@ -384,34 +410,77 @@
             }
 
             if (controls.isLocked) {
-                direction.z = Number(moveForward) - Number(moveBackward);
-                direction.x = Number(moveRight) - Number(moveLeft);
-                direction.normalize();
-                const speed = isFlying ? 200 : 40;
-                if (moveForward || moveBackward) velocity.z -= direction.z * speed * delta;
-                if (moveLeft || moveRight) velocity.x -= direction.x * speed * delta;
-
-                velocity.x -= velocity.x * 10.0 * delta; velocity.z -= velocity.z * 10.0 * delta;
-
-                const pos = controls.getObject().position;
-                if (!isFlying) {
-                    velocity.y -= 25.0 * delta; 
-                    if (checkCollisions(pos) && velocity.y < 0) {
-                        velocity.y = 0; canJump = true; pos.y = Math.floor(pos.y - 1.5) + 2.0; 
-                    } else { canJump = false; }
-                } else { velocity.y -= velocity.y * 10.0 * delta; }
-
-                controls.moveRight(-velocity.x * delta);
-                controls.moveForward(-velocity.z * delta);
-                controls.getObject().position.y += velocity.y * delta;
+                const playerPos = controls.getObject().position;
+                const walkSpeed = isFlying ? 12 : 6;
                 
-                if (pos.y < -10) pos.y = 25;
+                // Direzione WASD
+                const moveVector = new THREE.Vector3();
+                if (moveForward) moveVector.z += 1;
+                if (moveBackward) moveVector.z -= 1;
+                if (moveLeft) moveVector.x -= 1;
+                if (moveRight) moveVector.x += 1;
+                moveVector.normalize();
+
+                if (moveVector.lengthSq() > 0) {
+                    const oldX = playerPos.x;
+                    const oldZ = playerPos.z;
+
+                    controls.moveRight(moveVector.x * walkSpeed * delta);
+                    controls.moveForward(moveVector.z * walkSpeed * delta);
+
+                    if (checkHorizontalCollision(playerPos)) {
+                        playerPos.x = oldX;
+                        playerPos.z = oldZ;
+                    }
+                }
+
+                // Gestione Volo / Gravità
+                if (isFlying) {
+                    let flySpeedY = 0;
+                    if (moveUp) flySpeedY = 8;
+                    if (moveDown) flySpeedY = -8;
+                    playerPos.y += flySpeedY * delta;
+                } else {
+                    velocityY -= 26.0 * delta; 
+                    playerPos.y += velocityY * delta;
+
+                    // Collisione terreno
+                    const feetY = playerPos.y - 1.6;
+                    const samplePoints = [
+                        [playerPos.x - 0.2, playerPos.z - 0.2], [playerPos.x + 0.2, playerPos.z - 0.2],
+                        [playerPos.x - 0.2, playerPos.z + 0.2], [playerPos.x + 0.2, playerPos.z + 0.2],
+                        [playerPos.x, playerPos.z]
+                    ];
+
+                    let grounded = false;
+                    for (let pt of samplePoints) {
+                        const bx = Math.round(pt[0]);
+                        const by = Math.floor(feetY + 0.15);
+                        const bz = Math.round(pt[1]);
+
+                        if (blocks.has(getBlockKey(bx, by, bz))) {
+                            const blockTop = by + 0.5;
+                            if (feetY <= blockTop && velocityY <= 0) {
+                                playerPos.y = blockTop + 1.6;
+                                velocityY = 0;
+                                canJump = true;
+                                grounded = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!grounded) canJump = false;
+                }
+
+                if (playerPos.y < -10) { playerPos.set(0, 25, 0); velocityY = 0; }
                 queueChunks(); 
             }
-            renderer.render(scene, camera); prevTime = time;
+
+            renderer.render(scene, camera); 
+            prevTime = time;
         }
 
-        // Avvio Iniziale
+        // Avvio
         controls.getObject().position.set(0, 25, 0); 
         generateChunk(0, 0);
         

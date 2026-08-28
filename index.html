@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>Minecraft Clone JS - PC & Mobile Edition</title>
+    <title>Minecraft Clone JS - PC & Mobile Edition (Bug Fix)</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
         body, html { width: 100vw; height: 100vh; overflow: hidden; background-color: #78A7FF; font-family: 'Courier New', Courier, monospace; user-select: none; -webkit-user-select: none; }
@@ -92,7 +92,6 @@
 </head>
 <body>
 
-    <!-- Selection Overlay -->
     <div id="mode-selector">
         <h1>SELEZIONA MODALITÀ DA GIOCO</h1>
         <button class="mode-btn" onclick="startApp('pc')">💻 MODALITÀ PC</button>
@@ -105,7 +104,6 @@
         Click: Gioca/Piazza/Rompi | WASD: Muovi | Spazio: Salta | Spazio x2: Volo | 1-6: Seleziona | E: Mouse
     </div>
 
-    <!-- Controlli Mobile Bedrock -->
     <div id="mobile-controls">
         <div id="joystick-base">
             <div id="joystick-stick"></div>
@@ -355,7 +353,6 @@
         let velocityY = 0;
         let lastSpaceTime = 0;
 
-        // Vettori di input analogico per Mobile
         let joystickInput = { x: 0, y: 0 };
 
         document.addEventListener('keydown', (event) => {
@@ -449,7 +446,7 @@
             }
         }
 
-        // --- GESTIONE CONTROLLI TOUCH MOBILE ---
+        // --- CONTROLLI TOUCH MOBILE ---
         const joyBase = document.getElementById('joystick-base');
         const joyStick = document.getElementById('joystick-stick');
         const jumpBtn = document.getElementById('mobile-jump-btn');
@@ -497,7 +494,7 @@
 
             joyStick.style.transform = `translate(${dx}px, ${dy}px)`;
             joystickInput.x = dx / maxRadius;
-            joystickInput.y = -dy / maxRadius; // Invertito per asse Y 3D
+            joystickInput.y = -dy / maxRadius;
         }
 
         // Salto Mobile
@@ -506,7 +503,7 @@
             triggerJump();
         });
 
-        // Touch sullo schermo per ruotare visuale, piazzare e rompere blocchi (Pressione prolungata 2s)
+        // Touch schermo per rotazione e distruzione/piazzamento blocchi (FIXED BUG 1)
         window.addEventListener('touchstart', (e) => {
             if (!isMobileMode) return;
             for (let i = 0; i < e.changedTouches.length; i++) {
@@ -523,6 +520,7 @@
                         if (isTouchingScreen) {
                             handleBlockBreak();
                             if (navigator.vibrate) navigator.vibrate(100);
+                            touchBreakTimer = null; // FIX BUG 1: Annulla il timer così touchend NON piazzerà il blocco subito dopo
                         }
                     }, 2000);
                 }
@@ -537,9 +535,11 @@
                     const dx = touch.clientX - touchLookStart.x;
                     const dy = touch.clientY - touchLookStart.y;
 
-                    // Se muove il dito annulla la rottura per consentire il movimento visuale
                     if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
-                        clearTimeout(touchBreakTimer);
+                        if (touchBreakTimer) {
+                            clearTimeout(touchBreakTimer);
+                            touchBreakTimer = null;
+                        }
                     }
 
                     const euler = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -559,9 +559,10 @@
             for (let i = 0; i < e.changedTouches.length; i++) {
                 const touch = e.changedTouches[i];
                 if (touch.identifier === touchLookId) {
-                    // Clic rapido (< 200ms circa e senza grande spostamento): Piazza blocco
+                    // FIX BUG 1: Se touchBreakTimer è ancora attivo (pressione breve), piazzi il blocco
                     if (touchBreakTimer) {
                         clearTimeout(touchBreakTimer);
+                        touchBreakTimer = null;
                         handleBlockPlace();
                     }
                     touchLookId = null;
@@ -592,7 +593,7 @@
             return false;
         }
 
-        // 7. LOOP DI ANIMAZIONE E FISICA
+        // 7. LOOP DI ANIMAZIONE E FISICA (FIXED BUG 2)
         let prevTime = performance.now();
         function animate() {
             requestAnimationFrame(animate);
@@ -608,7 +609,6 @@
                 const playerPos = controls.getObject().position;
                 const walkSpeed = isFlying ? 12 : 6;
                 
-                // Direzione slegata dalla quota Y
                 const frontDir = new THREE.Vector3();
                 camera.getWorldDirection(frontDir);
                 frontDir.y = 0; 
@@ -621,11 +621,9 @@
                 const moveDir = new THREE.Vector3();
 
                 if (isMobileMode) {
-                    // Movimento da Joystick Mobile
                     if (joystickInput.y !== 0) moveDir.addScaledVector(frontDir, joystickInput.y);
                     if (joystickInput.x !== 0) moveDir.addScaledVector(sideDir, joystickInput.x);
                 } else {
-                    // Movimento da Tastiera PC
                     if (moveForward) moveDir.add(frontDir);
                     if (moveBackward) moveDir.sub(frontDir);
                     if (moveRight) moveDir.add(sideDir);
@@ -646,17 +644,18 @@
                     }
                 }
 
-                // Gestione Volo / Gravità
+                // Gestione Volo / Gravità e Risoluzione Collisione Terreno (FIX BUG 2)
                 if (isFlying) {
                     let flySpeedY = 0;
                     if (moveUp) flySpeedY = 8;
                     if (moveDown) flySpeedY = -8;
                     playerPos.y += flySpeedY * delta;
                 } else {
-                    velocityY -= 26.0 * delta; 
+                    // Limite max velocità di caduta per evitare penetrazioni profonde
+                    velocityY = Math.max(-30.0, velocityY - 26.0 * delta); 
                     playerPos.y += velocityY * delta;
 
-                    // Collisione terreno
+                    // Controllo multi-altezza sotto i piedi per prevenire sprofondamenti
                     const feetY = playerPos.y - 1.6;
                     const samplePoints = [
                         [playerPos.x - 0.2, playerPos.z - 0.2], [playerPos.x + 0.2, playerPos.z - 0.2],
@@ -667,19 +666,24 @@
                     let grounded = false;
                     for (let pt of samplePoints) {
                         const bx = Math.round(pt[0]);
-                        const by = Math.floor(feetY + 0.15);
                         const bz = Math.round(pt[1]);
 
-                        if (blocks.has(getBlockKey(bx, by, bz))) {
-                            const blockTop = by + 0.5;
-                            if (feetY <= blockTop && velocityY <= 0) {
-                                playerPos.y = blockTop + 1.6;
-                                velocityY = 0;
-                                canJump = true;
-                                grounded = true;
-                                break;
+                        // Controlliamo l'altezza sotto i piedi e il blocco subito dentro i piedi
+                        for (let checkOffset = 0; checkOffset >= -1; checkOffset--) {
+                            const by = Math.floor(feetY) + checkOffset;
+
+                            if (blocks.has(getBlockKey(bx, by, bz))) {
+                                const blockTop = by + 0.5;
+                                if (feetY <= blockTop && velocityY <= 0) {
+                                    playerPos.y = blockTop + 1.6; // Riposiziona perfettamente il personaggio in superficie
+                                    velocityY = 0;
+                                    canJump = true;
+                                    grounded = true;
+                                    break;
+                                }
                             }
                         }
+                        if (grounded) break;
                     }
                     if (!grounded) canJump = false;
                 }

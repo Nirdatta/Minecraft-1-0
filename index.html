@@ -6,7 +6,7 @@
     <title>Minecraft Clone JS - Physics & Touch Fixed</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
-        body, html { width: 99vw; height: 100vh; overflow: hidden; background-color: #78A7FF; font-family: 'Courier New', Courier, monospace; user-select: none; -webkit-user-select: none; }
+        body, html { width: 100vw; height: 100vh; overflow: hidden; background-color: #78A7FF; font-family: 'Courier New', Courier, monospace; user-select: none; -webkit-user-select: none; }
         #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
         
         /* Modal di Selezione Modalità */
@@ -649,4 +649,100 @@
                     let minY = Math.round(py - pHeight + offsetHeight); let maxY = Math.round(py + pHead);
                     let minZ = Math.round(pz - pRadius); let maxZ = Math.round(pz + pRadius);
                     
-                    for(let x = min
+                    for(let x = minX; x <= maxX; x++) {
+                        for(let y = Math.round(py - pHeight - 1); y <= maxY + 1; y++) { 
+                            for(let z = minZ; z <= maxZ; z++) {
+                                if (blocks.has(getBlockKey(x, y, z))) res.push({x, y, z});
+                            }
+                        }
+                    }
+                    return res;
+                };
+
+                // STEP 1: Muoviti sull'Asse Y (Previene totalmente lo sprofondamento)
+                playerPos.y += dy;
+                let hitY = false;
+                for(let b of getBlocksNear(playerPos.x, playerPos.y, playerPos.z, 0)) {
+                    if (playerPos.y - pHeight < b.y + 0.5 && playerPos.y + pHead > b.y - 0.5 &&
+                        playerPos.x - pRadius < b.x + 0.5 && playerPos.x + pRadius > b.x - 0.5 &&
+                        playerPos.z - pRadius < b.z + 0.5 && playerPos.z + pRadius > b.z - 0.5) {
+                        
+                        if (dy <= 0) { // Caduta (ti fermi esattamente SOPRA il blocco)
+                            playerPos.y = b.y + 0.5 + pHeight + 0.001;
+                            velocityY = 0; canJump = true; hitY = true;
+                        } else if (dy > 0) { // Salto (sbatti la testa sul soffitto)
+                            playerPos.y = b.y - 0.5 - pHead - 0.001;
+                            velocityY = 0; hitY = true;
+                        }
+                    }
+                }
+                if (!hitY && !isFlying) canJump = false;
+
+                // STEP 2: Muoviti sull'Asse X (Muri laterali perfetti)
+                playerPos.x += dx;
+                // Step Offset = 0.05 per scivolare sui pixel impolverati dei pavimenti senza impigliarsi
+                for(let b of getBlocksNear(playerPos.x, playerPos.y, playerPos.z, 0.05)) { 
+                    if (playerPos.y - pHeight + 0.05 < b.y + 0.5 && playerPos.y + pHead > b.y - 0.5 &&
+                        playerPos.x - pRadius < b.x + 0.5 && playerPos.x + pRadius > b.x - 0.5 &&
+                        playerPos.z - pRadius < b.z + 0.5 && playerPos.z + pRadius > b.z - 0.5) {
+                        
+                        if (dx > 0) playerPos.x = b.x - 0.5 - pRadius - 0.001;
+                        else if (dx < 0) playerPos.x = b.x + 0.5 + pRadius + 0.001;
+                    }
+                }
+
+                // STEP 3: Muoviti sull'Asse Z (Frontali perfetti)
+                playerPos.z += dz;
+                for(let b of getBlocksNear(playerPos.x, playerPos.y, playerPos.z, 0.05)) {
+                    if (playerPos.y - pHeight + 0.05 < b.y + 0.5 && playerPos.y + pHead > b.y - 0.5 &&
+                        playerPos.x - pRadius < b.x + 0.5 && playerPos.x + pRadius > b.x - 0.5 &&
+                        playerPos.z - pRadius < b.z + 0.5 && playerPos.z + pRadius > b.z - 0.5) {
+                        
+                        if (dz > 0) playerPos.z = b.z - 0.5 - pRadius - 0.001;
+                        else if (dz < 0) playerPos.z = b.z + 0.5 + pRadius + 0.001;
+                    }
+                }
+
+                if (playerPos.y < -10) { playerPos.set(0, 25, 0); velocityY = 0; }
+                queueChunks(); 
+            }
+
+            renderer.render(scene, camera); 
+            prevTime = time;
+        }
+
+        // START ENGINE
+        function startApp(mode) {
+            document.getElementById('mode-selector').style.display = 'none';
+            document.getElementById('loading').style.display = 'flex';
+
+            if (mode === 'mobile') {
+                isMobileMode = true;
+                document.getElementById('instructions').style.display = 'none';
+                document.getElementById('mobile-controls').style.display = 'block';
+
+                if (document.documentElement.requestFullscreen) {
+                    document.documentElement.requestFullscreen().catch(()=>{});
+                }
+            }
+
+            setTimeout(() => {
+                controls.getObject().position.set(0, 25, 0); 
+                generateChunk(0, 0);
+
+                const loadingScreen = document.getElementById('loading');
+                loadingScreen.style.opacity = '0';
+                setTimeout(() => loadingScreen.style.display = 'none', 300);
+
+                animate();
+            }, 100);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

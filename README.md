@@ -1,14 +1,14 @@
-<!DOCTYPE html>
+
+  <!DOCTYPE html>
 <html lang="it">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minecraft Clone JS</title>
+    <title>Minecraft Clone JS - Ottimizzato</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Courier New', Courier, monospace; user-select: none; }
         #canvas-container { width: 100vw; height: 100vh; display: block; }
         
-        /* Interfaccia Utente */
         #crosshair {
             position: absolute; top: 50%; left: 50%; width: 20px; height: 20px;
             transform: translate(-50%, -50%); pointer-events: none;
@@ -39,7 +39,7 @@
 </head>
 <body>
 
-    <div id="loading">Loading Terrain... (Generazione Mondo in corso)</div>
+    <div id="loading">Loading Terrain...</div>
     <div id="crosshair">+</div>
     <div id="instructions">
         Click: Gioca/Piazza/Rompi | WASD: Muovi | Spazio: Salta | Spazio x2: Volo | E: Inventario
@@ -56,60 +56,59 @@
 
     <div id="canvas-container"></div>
 
-    <script type="module">
-        import * as THREE from 'https://unpkg.com/three@0.128.0/build/three.module.js';
-        import { PointerLockControls } from 'https://unpkg.com/three@0.128.0/examples/jsm/controls/PointerLockControls.js';
+    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
 
+    <script>
         // 1. INIZIALIZZAZIONE SCENA
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87CEEB); // Cielo azzurro
-        scene.fog = new THREE.Fog(0x87CEEB, 20, 50);  // Nebbia per nascondere il caricamento dei chunk
+        scene.background = new THREE.Color(0x87CEEB); 
+        scene.fog = new THREE.Fog(0x87CEEB, 20, 50);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
         const renderer = new THREE.WebGLRenderer({ antialias: false });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-        // Luci
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
         scene.add(ambientLight);
         const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
         dirLight.position.set(100, 200, 50);
         scene.add(dirLight);
 
-        // Controlli (Prima persona)
-        const controls = new PointerLockControls(camera, document.body);
+        // Uso di THREE globale (risolve il crash dei moduli non caricati)
+        const controls = new THREE.PointerLockControls(camera, document.body);
         scene.add(controls.getObject());
 
-        // 2. MATERIALI E BLOCCHI
+        // 2. MATERIALI
         const geometry = new THREE.BoxGeometry(1, 1, 1);
         const materials = {
-            1: new THREE.MeshLambertMaterial({ color: 0x5C4033 }), // Terra
-            2: new THREE.MeshLambertMaterial({ color: 0x808080 }), // Pietra
-            3: new THREE.MeshLambertMaterial({ color: 0x333333 }), // Bedrock
-            4: new THREE.MeshLambertMaterial({ color: 0x8B5A2B }), // Legno
-            5: new THREE.MeshLambertMaterial({ color: 0xADD8E6, transparent: true, opacity: 0.6 }), // Vetro
-            6: new THREE.MeshLambertMaterial({ color: 0xB22222 }), // Mattoni
-            7: new THREE.MeshLambertMaterial({ color: 0x228B22 })  // Foglie (per alberi)
+            1: new THREE.MeshLambertMaterial({ color: 0x5C4033 }), 
+            2: new THREE.MeshLambertMaterial({ color: 0x808080 }), 
+            3: new THREE.MeshLambertMaterial({ color: 0x333333 }), 
+            4: new THREE.MeshLambertMaterial({ color: 0x8B5A2B }), 
+            5: new THREE.MeshLambertMaterial({ color: 0xADD8E6, transparent: true, opacity: 0.6 }), 
+            6: new THREE.MeshLambertMaterial({ color: 0xB22222 }), 
+            7: new THREE.MeshLambertMaterial({ color: 0x228B22 })  
         };
 
         let currentBlockType = 5;
-        window.selectBlock = (type, el) => {
+        function selectBlock(type, el) {
             currentBlockType = type;
             document.querySelectorAll('.block-btn').forEach(b => b.classList.remove('active'));
             el.classList.add('active');
-        };
+        }
 
-        // 3. GENERAZIONE MONDO (Algoritmo, Chunk e Culling)
+        // 3. GENERAZIONE MONDO OTTIMIZZATA
         const chunkSize = 16;
-        const renderDistance = 2; // Raggio di chunk renderizzati
-        const chunks = new Map(); // RAM optimization
-        const blocks = new Map(); // Tutti i blocchi posizionati
+        const renderDistance = 2; 
+        const chunks = new Map(); 
+        const blocks = new Map(); 
+        const chunkQueue = []; // Coda per caricare il terreno un po' alla volta
 
         function getBlockKey(x, y, z) { return `${Math.round(x)},${Math.round(y)},${Math.round(z)}`; }
         function getChunkKey(cx, cz) { return `${cx},${cz}`; }
 
-        // Noise algoritmico semplificato (sostituto del Perlin Noise per non usare librerie esterne)
         function noise(x, z) {
             return (Math.sin(x * 0.1) + Math.cos(z * 0.1) + Math.sin(x * 0.05 + z * 0.05)) * 2;
         }
@@ -127,33 +126,26 @@
                     const worldX = startX + x;
                     const worldZ = startZ + z;
                     
-                    // Rilievi (elevation)
-                    const elevation = Math.floor(noise(worldX, worldZ)) + 12; // Base y = 12
+                    const elevation = Math.floor(noise(worldX, worldZ)) + 12; 
 
-                    // Bedrock al fondo
+                    // Bedrock sul fondo
                     addBlockToChunk(worldX, 0, worldZ, 3, chunkGroup);
                     
-                    // 10 blocchi di Pietra
-                    for(let y = 1; y <= 10; y++) {
-                        addBlockToChunk(worldX, y, worldZ, 2, chunkGroup);
-                    }
-
-                    // Pietra extra per i rilievi, poi 2 di terra in cima
-                    for(let y = 11; y <= elevation; y++) {
+                    // Ottimizzazione RAM: genero solo gli ultimi 4-5 blocchi di superficie, non tutto il cubo
+                    for(let y = Math.max(1, elevation - 4); y <= elevation; y++) {
                         if (y >= elevation - 1) {
-                            addBlockToChunk(worldX, y, worldZ, 1, chunkGroup); // 2 di terra
+                            addBlockToChunk(worldX, y, worldZ, 1, chunkGroup); 
                         } else {
-                            addBlockToChunk(worldX, y, worldZ, 2, chunkGroup); // pietra
+                            addBlockToChunk(worldX, y, worldZ, 2, chunkGroup); 
                         }
                     }
 
-                    // Generazione Alberi (randomica)
+                    // Alberi
                     if (Math.random() < 0.01 && elevation > 11) {
                         const treeHeight = Math.floor(Math.random() * 3) + 4;
                         for (let ty = 1; ty <= treeHeight; ty++) {
-                            addBlockToChunk(worldX, elevation + ty, worldZ, 4, chunkGroup); // Tronco
+                            addBlockToChunk(worldX, elevation + ty, worldZ, 4, chunkGroup);
                         }
-                        // Chioma dell'albero
                         for (let lx = -1; lx <= 1; lx++) {
                             for (let lz = -1; lz <= 1; lz++) {
                                 addBlockToChunk(worldX + lx, elevation + treeHeight, worldZ + lz, 7, chunkGroup);
@@ -170,43 +162,50 @@
         function addBlockToChunk(x, y, z, type, group) {
             const mesh = new THREE.Mesh(geometry, materials[type]);
             mesh.position.set(x, y, z);
-            // Culling dei volti interni (ottimizzazione estrema)
             mesh.matrixAutoUpdate = false; 
             mesh.updateMatrix();
             group.add(mesh);
             blocks.set(getBlockKey(x, y, z), mesh);
         }
 
-        // Culling e gestione memoria: genera vicini, elimina lontani
-        function updateChunks() {
+        // Accoda i chunk invece di crearli tutti di botto bloccando lo schermo
+        function queueChunks() {
             const px = Math.floor(controls.getObject().position.x / chunkSize);
             const pz = Math.floor(controls.getObject().position.z / chunkSize);
 
             for (let x = -renderDistance; x <= renderDistance; x++) {
                 for (let z = -renderDistance; z <= renderDistance; z++) {
-                    generateChunk(px + x, pz + z);
+                    const cx = px + x;
+                    const cz = pz + z;
+                    const chunkKey = getChunkKey(cx, cz);
+                    
+                    if (!chunks.has(chunkKey) && !chunkQueue.some(q => q.x === cx && q.z === cz)) {
+                        chunkQueue.push({x: cx, z: cz});
+                    }
                 }
             }
 
-            // Elimina chunk lontani (Culling RAM)
+            // Culling - Rimuove i chunk troppo distanti
             chunks.forEach((group, key) => {
                 const [cx, cz] = key.split(',').map(Number);
                 if (Math.abs(cx - px) > renderDistance + 1 || Math.abs(cz - pz) > renderDistance + 1) {
                     scene.remove(group);
                     chunks.delete(key);
+                    group.children.forEach(mesh => {
+                        blocks.delete(getBlockKey(mesh.position.x, mesh.position.y, mesh.position.z));
+                    });
                 }
             });
         }
 
-        // 4. MECCANICHE DI GIOCO (Fisica, Movimento, Volo)
+        // 4. MECCANICHE E CONTROLLI (Inalterati)
         let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
-        let canJump = false;
-        let isFlying = false;
+        let canJump = false, isFlying = false;
         let velocity = new THREE.Vector3();
         let direction = new THREE.Vector3();
         let lastSpaceTime = 0;
 
-        const onKeyDown = function (event) {
+        document.addEventListener('keydown', (event) => {
             if(document.getElementById('inventory').style.display === 'grid') return;
 
             switch (event.code) {
@@ -216,7 +215,7 @@
                 case 'KeyD': moveRight = true; break;
                 case 'Space': 
                     const now = Date.now();
-                    if (now - lastSpaceTime < 300) { // Doppio tocco barra spaziatrice
+                    if (now - lastSpaceTime < 300) { 
                         isFlying = !isFlying;
                         velocity.y = 0;
                     } else if (canJump && !isFlying) {
@@ -226,9 +225,7 @@
                     }
                     lastSpaceTime = now;
                     break;
-                case 'ShiftLeft':
-                    if(isFlying) velocity.y = -10;
-                    break;
+                case 'ShiftLeft': if(isFlying) velocity.y = -10; break;
                 case 'KeyE':
                     if (controls.isLocked) {
                         controls.unlock();
@@ -236,9 +233,9 @@
                     }
                     break;
             }
-        };
+        });
 
-        const onKeyUp = function (event) {
+        document.addEventListener('keyup', (event) => {
             switch (event.code) {
                 case 'KeyW': moveForward = false; break;
                 case 'KeyA': moveLeft = false; break;
@@ -247,12 +244,8 @@
                 case 'Space': if(isFlying) velocity.y = 0; break;
                 case 'ShiftLeft': if(isFlying) velocity.y = 0; break;
             }
-        };
+        });
 
-        document.addEventListener('keydown', onKeyDown);
-        document.addEventListener('keyup', onKeyUp);
-
-        // Click per blocchi o chiudere inventario
         document.addEventListener('mousedown', (e) => {
             if (document.getElementById('inventory').style.display === 'grid') {
                 document.getElementById('inventory').style.display = 'none';
@@ -261,44 +254,41 @@
             }
             if (!controls.isLocked) { controls.lock(); return; }
 
-            // Raycaster per mirare dal centro
             const raycaster = new THREE.Raycaster();
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
             
-            // Trova intersezioni (raggio 5 blocchi)
             const intersects = raycaster.intersectObjects(scene.children, true);
             if (intersects.length > 0 && intersects[0].distance < 6) {
                 const intersect = intersects[0];
                 const blockMesh = intersect.object;
 
-                if (e.button === 0) { // Click Sinistro: Distruggi
-                    if (blockMesh.material !== materials[3]) { // Non rompere la bedrock
+                if (e.button === 0) { 
+                    if (blockMesh.material !== materials[3]) { 
                         blockMesh.parent.remove(blockMesh);
                         blocks.delete(getBlockKey(blockMesh.position.x, blockMesh.position.y, blockMesh.position.z));
                     }
-                } else if (e.button === 2) { // Click Destro: Piazza
+                } else if (e.button === 2) { 
                     const pos = intersect.point.clone().add(intersect.face.normal.clone().multiplyScalar(0.5));
                     const newPos = new THREE.Vector3(Math.round(pos.x), Math.round(pos.y), Math.round(pos.z));
                     
-                    // Evita di piazzare dentro il giocatore
                     const pPos = controls.getObject().position;
-                    if (Math.abs(newPos.x - pPos.x) < 0.8 && Math.abs(newPos.z - pPos.z) < 0.8 && newPos.y >= pPos.y - 1.5 && newPos.y <= pPos.y + 0.5) {
-                        return; 
-                    }
+                    if (Math.abs(newPos.x - pPos.x) < 0.8 && Math.abs(newPos.z - pPos.z) < 0.8 && newPos.y >= pPos.y - 1.5 && newPos.y <= pPos.y + 0.5) return; 
 
                     const newMesh = new THREE.Mesh(geometry, materials[currentBlockType]);
                     newMesh.position.copy(newPos);
                     newMesh.matrixAutoUpdate = false;
                     newMesh.updateMatrix();
-                    scene.add(newMesh); // Aggiunto direttamente alla scena principale
+                    
+                    // Piazzalo nel chunk centrale temporaneamente o nella scena principale
+                    scene.add(newMesh); 
                     blocks.set(getBlockKey(newPos.x, newPos.y, newPos.z), newMesh);
                 }
             }
         });
 
-        // 5. FISICA E COLLISIONI
+        // 5. FISICA E COLLISIONI (Inalterate)
         function checkCollisions(pos) {
-            const padding = 0.3; // Hitbox width
+            const padding = 0.3; 
             const checkPoints = [
                 new THREE.Vector3(pos.x - padding, pos.y, pos.z - padding),
                 new THREE.Vector3(pos.x + padding, pos.y, pos.z + padding),
@@ -307,7 +297,7 @@
             ];
 
             for (let pt of checkPoints) {
-                const key = getBlockKey(pt.x, pt.y - 1.5, pt.z); // Blocco sotto i piedi
+                const key = getBlockKey(pt.x, pt.y - 1.5, pt.z); 
                 if (blocks.has(key)) return true;
             }
             return false;
@@ -319,7 +309,14 @@
         function animate() {
             requestAnimationFrame(animate);
             const time = performance.now();
-            const delta = (time - prevTime) / 1000;
+            // Previene salti enormi di frame se il tab va in background
+            const delta = Math.min((time - prevTime) / 1000, 0.1); 
+
+            // Coda di generazione: genera 1 chunk al frame per non laggare il PC
+            if (chunkQueue.length > 0) {
+                const chunk = chunkQueue.shift();
+                generateChunk(chunk.x, chunk.z);
+            }
 
             if (controls.isLocked) {
                 direction.z = Number(moveForward) - Number(moveBackward);
@@ -330,62 +327,52 @@
                 if (moveForward || moveBackward) velocity.z -= direction.z * speed * delta;
                 if (moveLeft || moveRight) velocity.x -= direction.x * speed * delta;
 
-                // Attrito
                 velocity.x -= velocity.x * 10.0 * delta;
                 velocity.z -= velocity.z * 10.0 * delta;
 
-                // Gravità e Collisione
                 const pos = controls.getObject().position;
                 if (!isFlying) {
-                    velocity.y -= 25.0 * delta; // Gravità 
+                    velocity.y -= 25.0 * delta; 
                     const isGrounded = checkCollisions(pos);
                     
                     if (isGrounded && velocity.y < 0) {
                         velocity.y = 0;
                         canJump = true;
-                        // Allinea ai blocchi
-                        pos.y = Math.floor(pos.y - 1.5) + 2.5; 
+                        // Regolazione collisione
+                        pos.y = Math.floor(pos.y - 1.5) + 2.0; 
                     } else {
                         canJump = false;
                     }
                 } else {
-                    velocity.y -= velocity.y * 10.0 * delta; // Attrito verticale in volo
+                    velocity.y -= velocity.y * 10.0 * delta; 
                 }
 
                 controls.moveRight(-velocity.x * delta);
                 controls.moveForward(-velocity.z * delta);
                 controls.getObject().position.y += velocity.y * delta;
                 
-                // Limite caduta nel vuoto
-                if (controls.getObject().position.y < -10) {
-                    controls.getObject().position.y = 20;
-                }
+                if (controls.getObject().position.y < -10) controls.getObject().position.y = 25;
 
-                updateChunks();
+                queueChunks(); // Controlla costantemente se servono nuovi chunk
             }
 
             renderer.render(scene, camera);
             prevTime = time;
         }
 
-        // 7. AVVIO DEL GIOCO (Sequenza iniziale)
-        // Posizionamento iniziale del giocatore
-        controls.getObject().position.set(0, 20, 0); 
+        // 7. AVVIO IMMEDIATO
+        controls.getObject().position.set(0, 25, 0); 
         
-        // Genera il mondo base prima di levare il caricamento
-        setTimeout(() => {
-            updateChunks();
-            
-            // Rimuovi schermata loading
-            const loadingScreen = document.getElementById('loading');
-            loadingScreen.style.opacity = '0';
-            setTimeout(() => loadingScreen.style.display = 'none', 500);
+        // Costruisce istantaneamente il terreno sotto i tuoi piedi per non farti cadere nel vuoto
+        generateChunk(0, 0);
+        
+        // Dissolve la schermata di caricamento immediatamente
+        const loadingScreen = document.getElementById('loading');
+        loadingScreen.style.opacity = '0';
+        setTimeout(() => loadingScreen.style.display = 'none', 500);
 
-            // Avvia Render
-            animate();
-        }, 1000); // Finto delay per permettere all'algoritmo di calcolare i chunk iniziali
+        animate();
 
-        // Adattamento resize finestra
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
@@ -395,3 +382,4 @@
     </script>
 </body>
 </html>
+

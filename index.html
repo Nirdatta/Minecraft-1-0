@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minecraft Clone JS - Physics & Steve Fixed</title>
+    <title>Minecraft Clone JS - Direction Fix</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body, html { width: 100vw; height: 100vh; overflow: hidden; background-color: #78A7FF; font-family: 'Courier New', Courier, monospace; user-select: none; }
@@ -73,7 +73,7 @@
     <script src="https://unpkg.com/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
 
     <script>
-        // 1. SCENA E GRUPPO MONDO SEPARATO
+        // 1. SCENA E GRUPPO MONDO
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x78A7FF); 
         scene.fog = new THREE.Fog(0x78A7FF, 20, 50);
@@ -207,7 +207,7 @@
             else document.querySelectorAll('.slot')[type-1].classList.add('active');
         }
 
-        // 4. GENERAZIONE TERRENO OTTIMIZZATA
+        // 4. GENERAZIONE TERRENO
         const chunkSize = 16;
         const renderDistance = 2; 
         const chunks = new Map(); 
@@ -293,7 +293,7 @@
             });
         }
 
-        // 5. MOVIMENTO E FISICA CORRETTI
+        // 5. MOVIMENTO E INPUT TASTIERA
         let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
         let moveUp = false, moveDown = false;
         let canJump = false, isFlying = false;
@@ -342,15 +342,13 @@
             }
         });
 
-        // PIAZZA ED ELIMINA BLOCCHI (Senza colpire Steve)
+        // MOUSE PER INTERAGIRE
         document.addEventListener('mousedown', (e) => {
             if (e.target.closest('.slot')) return;
             if (!controls.isLocked) { controls.lock(); return; }
 
             const raycaster = new THREE.Raycaster();
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-            
-            // Interseca solo con i blocchi del mondo
             const intersects = raycaster.intersectObjects(worldGroup.children, true);
             
             if (intersects.length > 0 && intersects[0].distance < 6) {
@@ -378,7 +376,7 @@
             }
         });
 
-        // CONTROLLO COLLISIONI PARETI
+        // COLLISIONI CON I BLOCCHI
         function checkHorizontalCollision(pos) {
             const pad = 0.25;
             const checkCoords = [
@@ -397,7 +395,7 @@
             return false;
         }
 
-        // 6. LOOP PRINCIPALE
+        // 6. LOOP DI ANIMAZIONE E FISICA RISOLTA
         let prevTime = performance.now();
         function animate() {
             requestAnimationFrame(animate);
@@ -413,20 +411,29 @@
                 const playerPos = controls.getObject().position;
                 const walkSpeed = isFlying ? 12 : 6;
                 
-                // Direzione WASD
-                const moveVector = new THREE.Vector3();
-                if (moveForward) moveVector.z += 1;
-                if (moveBackward) moveVector.z -= 1;
-                if (moveLeft) moveVector.x -= 1;
-                if (moveRight) moveVector.x += 1;
-                moveVector.normalize();
+                // --- FIX CALCOLO DIREZIONE INDIPENDENTE DALL'INCLINAZIONE ---
+                const frontDir = new THREE.Vector3();
+                camera.getWorldDirection(frontDir);
+                frontDir.y = 0; // Azzera l'influenza dell'inclinazione in alto/basso
+                frontDir.normalize();
 
-                if (moveVector.lengthSq() > 0) {
+                const sideDir = new THREE.Vector3();
+                sideDir.crossVectors(camera.up, frontDir).negate().normalize();
+                sideDir.y = 0;
+
+                const moveDir = new THREE.Vector3();
+                if (moveForward) moveDir.add(frontDir);
+                if (moveBackward) moveDir.sub(frontDir);
+                if (moveRight) moveDir.add(sideDir);
+                if (moveLeft) moveDir.sub(sideDir);
+
+                if (moveDir.lengthSq() > 0) {
+                    moveDir.normalize();
                     const oldX = playerPos.x;
                     const oldZ = playerPos.z;
 
-                    controls.moveRight(moveVector.x * walkSpeed * delta);
-                    controls.moveForward(moveVector.z * walkSpeed * delta);
+                    playerPos.x += moveDir.x * walkSpeed * delta;
+                    playerPos.z += moveDir.z * walkSpeed * delta;
 
                     if (checkHorizontalCollision(playerPos)) {
                         playerPos.x = oldX;
@@ -480,7 +487,7 @@
             prevTime = time;
         }
 
-        // Avvio
+        // Avvio Iniziale
         controls.getObject().position.set(0, 25, 0); 
         generateChunk(0, 0);
         

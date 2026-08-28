@@ -2,13 +2,29 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minecraft Clone JS - Direction Fix</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>Minecraft Clone JS - PC & Mobile Edition</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body, html { width: 100vw; height: 100vh; overflow: hidden; background-color: #78A7FF; font-family: 'Courier New', Courier, monospace; user-select: none; }
+        * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
+        body, html { width: 100vw; height: 100vh; overflow: hidden; background-color: #78A7FF; font-family: 'Courier New', Courier, monospace; user-select: none; -webkit-user-select: none; }
         #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
         
+        /* Modal di Selezione Modalità */
+        #mode-selector {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(17, 17, 17, 0.95); color: #fff; display: flex;
+            flex-direction: column; justify-content: center; align-items: center;
+            z-index: 200; gap: 20px;
+        }
+        #mode-selector h1 { font-size: 32px; text-shadow: 2px 2px #000; text-align: center; }
+        .mode-btn {
+            padding: 15px 40px; font-size: 20px; font-weight: bold; color: white;
+            background: #555; border: 3px solid #fff; border-radius: 8px; cursor: pointer;
+            box-shadow: 0 4px 0 #222; transition: transform 0.1s, background 0.2s;
+        }
+        .mode-btn:active { transform: translateY(4px); box-shadow: 0 0 0 #222; }
+        .mode-btn:hover { background: #777; }
+
         /* Mirino centratissimo */
         #crosshair {
             position: absolute; top: 50%; left: 50%; width: 16px; height: 16px;
@@ -23,7 +39,7 @@
         /* Loading Overlay */
         #loading {
             position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
-            background-color: #111; color: #fff; display: flex;
+            background-color: #111; color: #fff; display: none;
             justify-content: center; align-items: center; font-size: 28px;
             z-index: 100; transition: opacity 0.3s;
         }
@@ -48,14 +64,53 @@
             position: absolute; top: 12px; left: 12px; color: white;
             text-shadow: 1px 1px 0 #000; pointer-events: none; font-size: 13px; z-index: 20;
         }
+
+        /* MOBILE CONTROLS (BEDROCK STYLE) */
+        #mobile-controls {
+            display: none; position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: 50; pointer-events: none;
+        }
+        #joystick-base {
+            position: absolute; bottom: 30px; left: 30px; width: 120px; height: 120px;
+            background: rgba(255, 255, 255, 0.2); border: 2px solid rgba(255, 255, 255, 0.4);
+            border-radius: 50%; pointer-events: auto; touch-action: none;
+        }
+        #joystick-stick {
+            position: absolute; top: 35px; left: 35px; width: 50px; height: 50px;
+            background: rgba(255, 255, 255, 0.6); border-radius: 50%;
+            pointer-events: none; transition: transform 0.05s ease-out;
+        }
+        #mobile-jump-btn {
+            position: absolute; bottom: 40px; right: 40px; width: 70px; height: 70px;
+            background: rgba(255, 255, 255, 0.3); border: 2px solid rgba(255, 255, 255, 0.6);
+            border-radius: 12px; color: white; font-weight: bold; font-size: 14px;
+            display: flex; justify-content: center; align-items: center;
+            pointer-events: auto; touch-action: none; text-shadow: 1px 1px 0 #000;
+        }
+        #mobile-jump-btn:active { background: rgba(255, 255, 255, 0.5); }
     </style>
 </head>
 <body>
 
+    <!-- Selection Overlay -->
+    <div id="mode-selector">
+        <h1>SELEZIONA MODALITÀ DA GIOCO</h1>
+        <button class="mode-btn" onclick="startApp('pc')">💻 MODALITÀ PC</button>
+        <button class="mode-btn" onclick="startApp('mobile')">📱 MODALITÀ TELEFONO</button>
+    </div>
+
     <div id="loading">Caricamento Mondo...</div>
     <div id="crosshair"></div>
     <div id="instructions">
-        Click: Gioca/Piazza/Rompi | WASD: Muovi | Spazio: Salta | Spazio x2: Volo (Spazio=Sali, Shift=Scendi) | 1-6: Seleziona | E: Mouse
+        Click: Gioca/Piazza/Rompi | WASD: Muovi | Spazio: Salta | Spazio x2: Volo | 1-6: Seleziona | E: Mouse
+    </div>
+
+    <!-- Controlli Mobile Bedrock -->
+    <div id="mobile-controls">
+        <div id="joystick-base">
+            <div id="joystick-stick"></div>
+        </div>
+        <div id="mobile-jump-btn">SALTA</div>
     </div>
     
     <div id="hotbar">
@@ -73,6 +128,8 @@
     <script src="https://unpkg.com/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
 
     <script>
+        let isMobileMode = false;
+
         // 1. SCENA E GRUPPO MONDO
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x78A7FF); 
@@ -95,9 +152,8 @@
         const controls = new THREE.PointerLockControls(camera, document.body);
         scene.add(controls.getObject());
 
-        // 2. CORPO DI STEVE PER IL GIOCATORE
+        // 2. CORPO DI STEVE
         const playerBody = new THREE.Group();
-        
         const torsoMat = new THREE.MeshLambertMaterial({ color: 0x00AAAA });
         const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.3), torsoMat);
         torso.position.set(0, -0.75, 0);
@@ -216,7 +272,6 @@
 
         function getBlockKey(x, y, z) { return `${Math.round(x)},${Math.round(y)},${Math.round(z)}`; }
         function getChunkKey(cx, cz) { return `${cx},${cz}`; }
-
         function noise(x, z) { return (Math.sin(x * 0.1) + Math.cos(z * 0.1) + Math.sin(x * 0.05 + z * 0.05)) * 2; }
 
         function generateChunk(cx, cz) {
@@ -293,33 +348,24 @@
             });
         }
 
-        // 5. MOVIMENTO E INPUT TASTIERA
+        // 5. MOVIMENTO E INPUT (PC + MOBILE)
         let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
         let moveUp = false, moveDown = false;
         let canJump = false, isFlying = false;
         let velocityY = 0;
         let lastSpaceTime = 0;
 
+        // Vettori di input analogico per Mobile
+        let joystickInput = { x: 0, y: 0 };
+
         document.addEventListener('keydown', (event) => {
+            if (isMobileMode) return;
             switch (event.code) {
                 case 'KeyW': moveForward = true; break;
                 case 'KeyA': moveLeft = true; break;
                 case 'KeyS': moveBackward = true; break;
                 case 'KeyD': moveRight = true; break;
-                case 'Space': 
-                    const now = Date.now();
-                    if (now - lastSpaceTime < 280) { 
-                        isFlying = !isFlying;
-                        velocityY = 0;
-                    } else {
-                        if (isFlying) {
-                            moveUp = true;
-                        } else if (canJump) {
-                            velocityY = 8.5; 
-                            canJump = false;
-                        }
-                    }
-                    lastSpaceTime = now; break;
+                case 'Space': triggerJump(); break;
                 case 'ShiftLeft': if (isFlying) moveDown = true; break;
                 case 'KeyE': 
                     if(controls.isLocked) controls.unlock(); else controls.lock(); 
@@ -334,6 +380,7 @@
         });
 
         document.addEventListener('keyup', (event) => {
+            if (isMobileMode) return;
             switch (event.code) {
                 case 'KeyW': moveForward = false; break; case 'KeyA': moveLeft = false; break;
                 case 'KeyS': moveBackward = false; break; case 'KeyD': moveRight = false; break;
@@ -342,41 +389,191 @@
             }
         });
 
-        // MOUSE PER INTERAGIRE
-        document.addEventListener('mousedown', (e) => {
-            if (e.target.closest('.slot')) return;
-            if (!controls.isLocked) { controls.lock(); return; }
+        function triggerJump() {
+            const now = Date.now();
+            if (now - lastSpaceTime < 280) { 
+                isFlying = !isFlying;
+                velocityY = 0;
+            } else {
+                if (isFlying) {
+                    moveUp = true;
+                    setTimeout(() => moveUp = false, 200);
+                } else if (canJump) {
+                    velocityY = 8.5; 
+                    canJump = false;
+                }
+            }
+            lastSpaceTime = now;
+        }
 
+        // INTERAZIONE BLOCCHI (PC)
+        document.addEventListener('mousedown', (e) => {
+            if (isMobileMode || e.target.closest('.slot')) return;
+            if (!controls.isLocked) { controls.lock(); return; }
+            if (e.button === 0) handleBlockBreak();
+            else if (e.button === 2) handleBlockPlace();
+        });
+
+        function handleBlockBreak() {
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const intersects = raycaster.intersectObjects(worldGroup.children, true);
+            
+            if (intersects.length > 0 && intersects[0].distance < 6) {
+                const blockMesh = intersects[0].object;
+                if (blockMesh.material !== matBedrock) { 
+                    blockMesh.parent.remove(blockMesh);
+                    blocks.delete(getBlockKey(blockMesh.position.x, blockMesh.position.y, blockMesh.position.z));
+                }
+            }
+        }
+
+        function handleBlockPlace() {
             const raycaster = new THREE.Raycaster();
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
             const intersects = raycaster.intersectObjects(worldGroup.children, true);
             
             if (intersects.length > 0 && intersects[0].distance < 6) {
                 const intersect = intersects[0];
-                const blockMesh = intersect.object;
+                const pos = intersect.point.clone().add(intersect.face.normal.clone().multiplyScalar(0.5));
+                const newPos = new THREE.Vector3(Math.round(pos.x), Math.round(pos.y), Math.round(pos.z));
+                
+                const pPos = controls.getObject().position;
+                if (Math.abs(newPos.x - pPos.x) < 0.8 && Math.abs(newPos.z - pPos.z) < 0.8 && newPos.y >= pPos.y - 1.5 && newPos.y <= pPos.y + 0.5) return; 
 
-                if (e.button === 0) { // Rompi
-                    if (blockMesh.material !== matBedrock) { 
-                        blockMesh.parent.remove(blockMesh);
-                        blocks.delete(getBlockKey(blockMesh.position.x, blockMesh.position.y, blockMesh.position.z));
-                    }
-                } else if (e.button === 2) { // Piazza
-                    const pos = intersect.point.clone().add(intersect.face.normal.clone().multiplyScalar(0.5));
-                    const newPos = new THREE.Vector3(Math.round(pos.x), Math.round(pos.y), Math.round(pos.z));
-                    
-                    const pPos = controls.getObject().position;
-                    if (Math.abs(newPos.x - pPos.x) < 0.8 && Math.abs(newPos.z - pPos.z) < 0.8 && newPos.y >= pPos.y - 1.5 && newPos.y <= pPos.y + 0.5) return; 
-
-                    const newMesh = new THREE.Mesh(geometry, getMaterial(currentBlockType));
-                    newMesh.position.copy(newPos);
-                    newMesh.matrixAutoUpdate = false; newMesh.updateMatrix();
-                    worldGroup.add(newMesh); 
-                    blocks.set(getBlockKey(newPos.x, newPos.y, newPos.z), newMesh);
-                }
+                const newMesh = new THREE.Mesh(geometry, getMaterial(currentBlockType));
+                newMesh.position.copy(newPos);
+                newMesh.matrixAutoUpdate = false; newMesh.updateMatrix();
+                worldGroup.add(newMesh); 
+                blocks.set(getBlockKey(newPos.x, newPos.y, newPos.z), newMesh);
             }
+        }
+
+        // --- GESTIONE CONTROLLI TOUCH MOBILE ---
+        const joyBase = document.getElementById('joystick-base');
+        const joyStick = document.getElementById('joystick-stick');
+        const jumpBtn = document.getElementById('mobile-jump-btn');
+
+        let touchLookId = null;
+        let touchLookStart = { x: 0, y: 0 };
+        let touchBreakTimer = null;
+        let isTouchingScreen = false;
+
+        // Joystick Logic
+        joyBase.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            updateJoystick(touch);
+        }, { passive: false });
+
+        joyBase.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            updateJoystick(touch);
+        }, { passive: false });
+
+        const resetJoystick = (e) => {
+            e.preventDefault();
+            joystickInput = { x: 0, y: 0 };
+            joyStick.style.transform = `translate(0px, 0px)`;
+        };
+        joyBase.addEventListener('touchend', resetJoystick);
+        joyBase.addEventListener('touchcancel', resetJoystick);
+
+        function updateJoystick(touch) {
+            const rect = joyBase.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+
+            let dx = touch.clientX - centerX;
+            let dy = touch.clientY - centerY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const maxRadius = 40;
+
+            if (dist > maxRadius) {
+                dx = (dx / dist) * maxRadius;
+                dy = (dy / dist) * maxRadius;
+            }
+
+            joyStick.style.transform = `translate(${dx}px, ${dy}px)`;
+            joystickInput.x = dx / maxRadius;
+            joystickInput.y = -dy / maxRadius; // Invertito per asse Y 3D
+        }
+
+        // Salto Mobile
+        jumpBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            triggerJump();
         });
 
-        // COLLISIONI CON I BLOCCHI
+        // Touch sullo schermo per ruotare visuale, piazzare e rompere blocchi (Pressione prolungata 2s)
+        window.addEventListener('touchstart', (e) => {
+            if (!isMobileMode) return;
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const touch = e.changedTouches[i];
+                if (touch.target.closest('#joystick-base') || touch.target.closest('#mobile-jump-btn') || touch.target.closest('#hotbar')) continue;
+
+                if (touchLookId === null) {
+                    touchLookId = touch.identifier;
+                    touchLookStart = { x: touch.clientX, y: touch.clientY };
+                    isTouchingScreen = true;
+
+                    // Timer 2 secondi per rompere blocco
+                    touchBreakTimer = setTimeout(() => {
+                        if (isTouchingScreen) {
+                            handleBlockBreak();
+                            if (navigator.vibrate) navigator.vibrate(100);
+                        }
+                    }, 2000);
+                }
+            }
+        }, { passive: false });
+
+        window.addEventListener('touchmove', (e) => {
+            if (!isMobileMode) return;
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const touch = e.changedTouches[i];
+                if (touch.identifier === touchLookId) {
+                    const dx = touch.clientX - touchLookStart.x;
+                    const dy = touch.clientY - touchLookStart.y;
+
+                    // Se muove il dito annulla la rottura per consentire il movimento visuale
+                    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                        clearTimeout(touchBreakTimer);
+                    }
+
+                    const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+                    euler.setFromQuaternion(camera.quaternion);
+                    euler.y -= dx * 0.005;
+                    euler.x -= dy * 0.005;
+                    euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, euler.x));
+                    camera.quaternion.setFromEuler(euler);
+
+                    touchLookStart = { x: touch.clientX, y: touch.clientY };
+                }
+            }
+        }, { passive: false });
+
+        const endTouchLook = (e) => {
+            if (!isMobileMode) return;
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const touch = e.changedTouches[i];
+                if (touch.identifier === touchLookId) {
+                    // Clic rapido (< 200ms circa e senza grande spostamento): Piazza blocco
+                    if (touchBreakTimer) {
+                        clearTimeout(touchBreakTimer);
+                        handleBlockPlace();
+                    }
+                    touchLookId = null;
+                    isTouchingScreen = false;
+                }
+            }
+        };
+        window.addEventListener('touchend', endTouchLook);
+        window.addEventListener('touchcancel', endTouchLook);
+
+
+        // 6. COLLISIONI PARETI
         function checkHorizontalCollision(pos) {
             const pad = 0.25;
             const checkCoords = [
@@ -395,7 +592,7 @@
             return false;
         }
 
-        // 6. LOOP DI ANIMAZIONE E FISICA RISOLTA
+        // 7. LOOP DI ANIMAZIONE E FISICA
         let prevTime = performance.now();
         function animate() {
             requestAnimationFrame(animate);
@@ -407,14 +604,14 @@
                 generateChunk(chunk.x, chunk.z);
             }
 
-            if (controls.isLocked) {
+            if (controls.isLocked || isMobileMode) {
                 const playerPos = controls.getObject().position;
                 const walkSpeed = isFlying ? 12 : 6;
                 
-                // --- FIX CALCOLO DIREZIONE INDIPENDENTE DALL'INCLINAZIONE ---
+                // Direzione slegata dalla quota Y
                 const frontDir = new THREE.Vector3();
                 camera.getWorldDirection(frontDir);
-                frontDir.y = 0; // Azzera l'influenza dell'inclinazione in alto/basso
+                frontDir.y = 0; 
                 frontDir.normalize();
 
                 const sideDir = new THREE.Vector3();
@@ -422,10 +619,18 @@
                 sideDir.y = 0;
 
                 const moveDir = new THREE.Vector3();
-                if (moveForward) moveDir.add(frontDir);
-                if (moveBackward) moveDir.sub(frontDir);
-                if (moveRight) moveDir.add(sideDir);
-                if (moveLeft) moveDir.sub(sideDir);
+
+                if (isMobileMode) {
+                    // Movimento da Joystick Mobile
+                    if (joystickInput.y !== 0) moveDir.addScaledVector(frontDir, joystickInput.y);
+                    if (joystickInput.x !== 0) moveDir.addScaledVector(sideDir, joystickInput.x);
+                } else {
+                    // Movimento da Tastiera PC
+                    if (moveForward) moveDir.add(frontDir);
+                    if (moveBackward) moveDir.sub(frontDir);
+                    if (moveRight) moveDir.add(sideDir);
+                    if (moveLeft) moveDir.sub(sideDir);
+                }
 
                 if (moveDir.lengthSq() > 0) {
                     moveDir.normalize();
@@ -487,15 +692,32 @@
             prevTime = time;
         }
 
-        // Avvio Iniziale
-        controls.getObject().position.set(0, 25, 0); 
-        generateChunk(0, 0);
-        
-        const loadingScreen = document.getElementById('loading');
-        loadingScreen.style.opacity = '0';
-        setTimeout(() => loadingScreen.style.display = 'none', 300);
+        // START ENGINE
+        function startApp(mode) {
+            document.getElementById('mode-selector').style.display = 'none';
+            document.getElementById('loading').style.display = 'flex';
 
-        animate();
+            if (mode === 'mobile') {
+                isMobileMode = true;
+                document.getElementById('instructions').style.display = 'none';
+                document.getElementById('mobile-controls').style.display = 'block';
+
+                if (document.documentElement.requestFullscreen) {
+                    document.documentElement.requestFullscreen().catch(()=>{});
+                }
+            }
+
+            setTimeout(() => {
+                controls.getObject().position.set(0, 25, 0); 
+                generateChunk(0, 0);
+
+                const loadingScreen = document.getElementById('loading');
+                loadingScreen.style.opacity = '0';
+                setTimeout(() => loadingScreen.style.display = 'none', 300);
+
+                animate();
+            }, 100);
+        }
 
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;

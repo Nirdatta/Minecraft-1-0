@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>Minecraft Clone JS - Physics & Touch Fixed</title>
+    <title>Minecraft Clone JS - Physics Final Fix</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
         body, html { width: 100vw; height: 100vh; overflow: hidden; background-color: #78A7FF; font-family: 'Courier New', Courier, monospace; user-select: none; -webkit-user-select: none; }
         #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
         
-        /* Modal di Selezione Modalità */
         #mode-selector {
             position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
             background: rgba(17, 17, 17, 0.95); color: #fff; display: flex;
@@ -25,7 +24,6 @@
         .mode-btn:active { transform: translateY(4px); box-shadow: 0 0 0 #222; }
         .mode-btn:hover { background: #777; }
 
-        /* Mirino centratissimo */
         #crosshair {
             position: absolute; top: 50%; left: 50%; width: 16px; height: 16px;
             transform: translate(-50%, -50%); pointer-events: none; z-index: 10;
@@ -36,7 +34,6 @@
         #crosshair::before { top: 7px; left: 0; width: 16px; height: 2px; }
         #crosshair::after { top: 0; left: 7px; width: 2px; height: 16px; }
 
-        /* Loading Overlay */
         #loading {
             position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
             background-color: #111; color: #fff; display: none;
@@ -44,7 +41,6 @@
             z-index: 100; transition: opacity 0.3s;
         }
 
-        /* Hotbar */
         #hotbar {
             position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
             display: flex; gap: 4px; background: rgba(0, 0, 0, 0.65); padding: 5px;
@@ -65,7 +61,6 @@
             text-shadow: 1px 1px 0 #000; pointer-events: none; font-size: 13px; z-index: 20;
         }
 
-        /* MOBILE CONTROLS (BEDROCK STYLE) */
         #mobile-controls {
             display: none; position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
             z-index: 50; pointer-events: none;
@@ -128,7 +123,6 @@
     <script>
         let isMobileMode = false;
 
-        // 1. SCENA E GRUPPO MONDO
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x78A7FF); 
         scene.fog = new THREE.Fog(0x78A7FF, 20, 50);
@@ -150,7 +144,6 @@
         const controls = new THREE.PointerLockControls(camera, document.body);
         scene.add(controls.getObject());
 
-        // 2. CORPO DI STEVE (Mantiene l'ombra e la base)
         const playerBody = new THREE.Group();
         const torsoMat = new THREE.MeshLambertMaterial({ color: 0x00AAAA });
         const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.3), torsoMat);
@@ -169,7 +162,6 @@
         playerBody.add(torso, legs, lArm, rArm);
         controls.getObject().add(playerBody);
 
-        // 3. TEXTURE ALPHA IN PIXEL ART
         function createTexture(type, drawToUI = null) {
             const canvas = document.createElement('canvas');
             canvas.width = 16; canvas.height = 16;
@@ -261,7 +253,6 @@
             else document.querySelectorAll('.slot')[type-1].classList.add('active');
         }
 
-        // 4. GENERAZIONE TERRENO
         const chunkSize = 16;
         const renderDistance = 2; 
         const chunks = new Map(); 
@@ -346,13 +337,11 @@
             });
         }
 
-        // 5. GESTIONE INPUT (PC + MOBILE) E PIAZZAMENTO BLOCCHI
         let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
         let moveUp = false, moveDown = false;
         let canJump = false, isFlying = false;
         let velocityY = 0;
         let lastSpaceTime = 0;
-
         let joystickInput = { x: 0, y: 0 };
 
         document.addEventListener('keydown', (event) => {
@@ -403,7 +392,6 @@
             lastSpaceTime = now;
         }
 
-        // INTERAZIONE BLOCCHI: EVITA DI PIAZZARE IL VETRO (O ALTRO) DENTRO SE STESSI
         document.addEventListener('mousedown', (e) => {
             if (isMobileMode || e.target.closest('.slot')) return;
             if (!controls.isLocked) { controls.lock(); return; }
@@ -435,7 +423,6 @@
                 const pos = intersect.point.clone().add(intersect.face.normal.clone().multiplyScalar(0.5));
                 const newPos = new THREE.Vector3(Math.round(pos.x), Math.round(pos.y), Math.round(pos.z));
                 
-                // FIX PIAZZAMENTO GHOST: Impedisce di piazzare il blocco se la tua hitbox AABB ci è dentro!
                 const pPos = controls.getObject().position;
                 const overlapX = (pPos.x - 0.3 < newPos.x + 0.5) && (pPos.x + 0.3 > newPos.x - 0.5);
                 const overlapY = (pPos.y - 1.6 < newPos.y + 0.5) && (pPos.y + 0.2 > newPos.y - 0.5);
@@ -451,18 +438,16 @@
             }
         }
 
-        // --- CONTROLLI TOUCH MOBILE OTTIMIZZATI ---
         const joyBase = document.getElementById('joystick-base');
         const joyStick = document.getElementById('joystick-stick');
         const jumpBtn = document.getElementById('mobile-jump-btn');
 
         let touchLookId = null;
         let touchLookStart = { x: 0, y: 0 };
-        let touchInitialPos = { x: 0, y: 0 }; // Fix per calcolare la distanza totale
+        let touchInitialPos = { x: 0, y: 0 }; 
         let touchBreakTimer = null;
         let isTouchingScreen = false;
 
-        // Joystick Logic
         joyBase.addEventListener('touchstart', (e) => {
             e.preventDefault();
             updateJoystick(e.touches[0]);
@@ -506,7 +491,6 @@
             triggerJump();
         });
 
-        // Touch schermo (FIXED BUG 1: Deadzone migliorata e Annullamento sicuro del timer)
         window.addEventListener('touchstart', (e) => {
             if (!isMobileMode) return;
             for (let i = 0; i < e.changedTouches.length; i++) {
@@ -516,15 +500,14 @@
                 if (touchLookId === null) {
                     touchLookId = touch.identifier;
                     touchLookStart = { x: touch.clientX, y: touch.clientY };
-                    touchInitialPos = { x: touch.clientX, y: touch.clientY }; // Salva la posizione Iniziale Assoluta
+                    touchInitialPos = { x: touch.clientX, y: touch.clientY }; 
                     isTouchingScreen = true;
 
-                    // Timer ridotto a 600ms per un feeling più rapido, simile a MCPE
                     touchBreakTimer = setTimeout(() => {
                         if (isTouchingScreen) {
                             handleBlockBreak();
                             if (navigator.vibrate) navigator.vibrate(100);
-                            touchBreakTimer = null; // Il timer si distrugge dopo aver spaccato, quindi touchEnd NON piazzerà il blocco
+                            touchBreakTimer = null; 
                         }
                     }, 600);
                 }
@@ -536,12 +519,9 @@
             for (let i = 0; i < e.changedTouches.length; i++) {
                 const touch = e.changedTouches[i];
                 if (touch.identifier === touchLookId) {
-                    
-                    // Controlla lo spostamento TOTALE dall'inizio del tocco
                     const totalDx = touch.clientX - touchInitialPos.x;
                     const totalDy = touch.clientY - touchInitialPos.y;
 
-                    // Se il dito si è mosso fuori dalla deadzone (15px) capiamo che sta solo girando la telecamera, non scavando
                     if (Math.abs(totalDx) > 15 || Math.abs(totalDy) > 15) {
                         if (touchBreakTimer) {
                             clearTimeout(touchBreakTimer);
@@ -559,7 +539,7 @@
                     euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, euler.x));
                     camera.quaternion.setFromEuler(euler);
 
-                    touchLookStart = { x: touch.clientX, y: touch.clientY }; // Resetta per il frame successivo
+                    touchLookStart = { x: touch.clientX, y: touch.clientY }; 
                 }
             }
         }, { passive: false });
@@ -569,7 +549,6 @@
             for (let i = 0; i < e.changedTouches.length; i++) {
                 const touch = e.changedTouches[i];
                 if (touch.identifier === touchLookId) {
-                    // Se il timer era ancora attivo al rilascio (pressione breve) annullalo e piazza il blocco!
                     if (touchBreakTimer) {
                         clearTimeout(touchBreakTimer);
                         touchBreakTimer = null;
@@ -583,8 +562,6 @@
         window.addEventListener('touchend', endTouchLook);
         window.addEventListener('touchcancel', endTouchLook);
 
-
-        // 6. NUOVO MOTORE FISICO "AABB" PER COLLISIONI PERFETTE (FIX BUG 2 - Sabbie Mobili)
         let prevTime = performance.now();
         
         function animate() {
@@ -633,20 +610,112 @@
                     velocityY = 0;
                 } else {
                     velocityY -= 26.0 * delta; 
-                    velocityY = Math.max(-40.0, velocityY); // Limite velocità caduta per non penetrare il terreno a frame alti!
+                    velocityY = Math.max(-40.0, velocityY); 
                     dy = velocityY * delta;
                 }
 
-                // Costanti della hitbox del Giocatore (AABB)
-                const pRadius = 0.3; // Larghezza
-                const pHeight = 1.6; // Distanza Occhi-Piedi
-                const pHead = 0.2;   // Distanza Occhi-Cima testa
+                const pRadius = 0.3; 
+                const pHeight = 1.6; 
+                const pHead = 0.2;   
 
-                // Funzione per raccogliere TUTTI i blocchi intorno al giocatore
                 const getBlocksNear = (px, py, pz, offsetHeight) => {
                     let res = [];
                     let minX = Math.round(px - pRadius); let maxX = Math.round(px + pRadius);
                     let minY = Math.round(py - pHeight + offsetHeight); let maxY = Math.round(py + pHead);
                     let minZ = Math.round(pz - pRadius); let maxZ = Math.round(pz + pRadius);
                     
-                    for(let x = min
+                    for(let x = minX; x <= maxX; x++) {
+                        for(let y = Math.round(py - pHeight - 1); y <= maxY + 1; y++) { 
+                            for(let z = minZ; z <= maxZ; z++) {
+                                if (blocks.has(getBlockKey(x, y, z))) res.push({x, y, z});
+                            }
+                        }
+                    }
+                    return res;
+                };
+
+                // FISICA ASSE Y STABILE (SENZA RIMBALZI)
+                playerPos.y += dy;
+                let hitY = false;
+                for(let b of getBlocksNear(playerPos.x, playerPos.y, playerPos.z, 0)) {
+                    if (playerPos.y - pHeight < b.y + 0.5 && playerPos.y + pHead > b.y - 0.5 &&
+                        playerPos.x - pRadius < b.x + 0.5 && playerPos.x + pRadius > b.x - 0.5 &&
+                        playerPos.z - pRadius < b.z + 0.5 && playerPos.z + pRadius > b.z - 0.5) {
+                        
+                        if (dy <= 0) { 
+                            playerPos.y = b.y + 0.5 + pHeight;
+                            velocityY = 0; canJump = true; hitY = true;
+                        } else if (dy > 0) { 
+                            playerPos.y = b.y - 0.5 - pHead;
+                            velocityY = 0; hitY = true;
+                        }
+                    }
+                }
+                if (!hitY && !isFlying) canJump = false;
+
+                // FISICA ASSE X
+                playerPos.x += dx;
+                for(let b of getBlocksNear(playerPos.x, playerPos.y, playerPos.z, 0.05)) { 
+                    if (playerPos.y - pHeight + 0.05 < b.y + 0.5 && playerPos.y + pHead > b.y - 0.5 &&
+                        playerPos.x - pRadius < b.x + 0.5 && playerPos.x + pRadius > b.x - 0.5 &&
+                        playerPos.z - pRadius < b.z + 0.5 && playerPos.z + pRadius > b.z - 0.5) {
+                        
+                        if (dx > 0) playerPos.x = b.x - 0.5 - pRadius;
+                        else if (dx < 0) playerPos.x = b.x + 0.5 + pRadius;
+                    }
+                }
+
+                // FISICA ASSE Z
+                playerPos.z += dz;
+                for(let b of getBlocksNear(playerPos.x, playerPos.y, playerPos.z, 0.05)) {
+                    if (playerPos.y - pHeight + 0.05 < b.y + 0.5 && playerPos.y + pHead > b.y - 0.5 &&
+                        playerPos.x - pRadius < b.x + 0.5 && playerPos.x + pRadius > b.x - 0.5 &&
+                        playerPos.z - pRadius < b.z + 0.5 && playerPos.z + pRadius > b.z - 0.5) {
+                        
+                        if (dz > 0) playerPos.z = b.z - 0.5 - pRadius;
+                        else if (dz < 0) playerPos.z = b.z + 0.5 + pRadius;
+                    }
+                }
+
+                if (playerPos.y < -10) { playerPos.set(0, 25, 0); velocityY = 0; }
+                queueChunks(); 
+            }
+
+            renderer.render(scene, camera); 
+            prevTime = time;
+        }
+
+        function startApp(mode) {
+            document.getElementById('mode-selector').style.display = 'none';
+            document.getElementById('loading').style.display = 'flex';
+
+            if (mode === 'mobile') {
+                isMobileMode = true;
+                document.getElementById('instructions').style.display = 'none';
+                document.getElementById('mobile-controls').style.display = 'block';
+
+                if (document.documentElement.requestFullscreen) {
+                    document.documentElement.requestFullscreen().catch(()=>{});
+                }
+            }
+
+            setTimeout(() => {
+                controls.getObject().position.set(0, 25, 0); 
+                generateChunk(0, 0);
+
+                const loadingScreen = document.getElementById('loading');
+                loadingScreen.style.opacity = '0';
+                setTimeout(() => loadingScreen.style.display = 'none', 300);
+
+                animate();
+            }, 100);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
